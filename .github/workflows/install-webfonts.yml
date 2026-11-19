@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - .github/workflows/install-webfonts.yml
+      - fonts/charset.txt
   workflow_dispatch:
 
 permissions:
