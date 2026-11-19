@@ -1,0 +1,84 @@
+name: Install local webfonts
+
+on:
+  push:
+    paths:
+      - .github/workflows/install-webfonts.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare WOFF2 Korean subsets
+        shell: bash
+        run: |
+          python -m pip install "fonttools[woff]>=4.55,<5"
+          mkdir -p fonts/licenses
+          python - <<'PY'
+          from pathlib import Path
+          from urllib.request import urlretrieve
+          from fontTools import subset
+          from fontTools.ttLib import TTFont
+          
+          root = Path('fonts')
+          base = 'https://raw.githubusercontent.com/'
+          sources = [
+              ('orioncactus/pretendard/main/packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2', 'pretendard-variable.woff2'),
+              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Regular.ttf', 'gowun-batang-regular.woff2'),
+              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Bold.ttf', 'gowun-batang-bold.woff2'),
+          ]
+          licenses = [
+              ('orioncactus/pretendard/main/LICENSE', 'licenses/pretendard-OFL.txt'),
+              ('google/fonts/main/ofl/gowunbatang/OFL.txt', 'licenses/gowun-batang-OFL.txt'),
+          ]
+          for source, destination in licenses:
+              urlretrieve(base + source, root / destination)
+          charset = set(range(0x20,0x7f))
+          charset.update(range(0x00a0,0x0100))
+          charset.update(range(0x2000,0x2070))
+          charset.update(range(0x3000,0x3040))
+          charset.update(range(0x3130,0x3190))
+          charset.update(range(0xff00,0xffef))
+          for cp in range(0xac00,0xd7a4):
+              try:
+                  chr(cp).encode('euc_kr')
+                  charset.add(cp)
+              except UnicodeEncodeError:
+                  continue
+          # Preserve less common characters used in the Yunmun web introduction.
+          charset.update(ord(c) for c in '潤文夜間協會韓國眞冊齒血無眠靑赤香夜')
+          for source, destination in sources:
+              input_name = Path('/tmp') / Path(source).name
+              urlretrieve(base + source, input_name)
+              font = TTFont(input_name)
+              options = subset.Options()
+              options.layout_features = ['*']
+              options.name_IDs = ['*']
+              options.name_legacy = True
+              options.notdef_glyph = True
+              ss = subset.Subsetter(options=options)
+              ss.populate(unicodes=charset)
+              ss.subset(font)
+              font.flavor = 'woff2'
+              out = root / destination
+              font.save(out)
+              print(destination, out.stat().st_size, 'bytes')
+          PY
+      - name: Commit font files
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add fonts/
+          if ! git diff --cached --quiet; then
+            git commit -m "Add locally hosted Pretendard and Gowun Batang WOFF2 fonts"
+            git push
+          fi
