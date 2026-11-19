@@ -31,9 +31,9 @@ jobs:
           root = Path('fonts')
           base = 'https://raw.githubusercontent.com/'
           sources = [
-              ('orioncactus/pretendard/main/packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2', 'pretendard-variable.woff2'),
-              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Regular.ttf', 'gowun-batang-regular.woff2'),
-              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Bold.ttf', 'gowun-batang-bold.woff2'),
+              ('orioncactus/pretendard/main/packages/pretendard/dist/web/variable/woff2/PretendardVariable.woff2', 'ym-sans.woff2'),
+              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Regular.ttf', 'ym-serif-regular.woff2'),
+              ('google/fonts/main/ofl/gowunbatang/GowunBatang-Bold.ttf', 'ym-serif-bold.woff2'),
           ]
           licenses = [
               ('orioncactus/pretendard/main/LICENSE', 'licenses/pretendard-OFL.txt'),
@@ -47,18 +47,22 @@ jobs:
           charset.update(range(0x3000,0x3040))
           charset.update(range(0x3130,0x3190))
           charset.update(range(0xff00,0xffef))
-          for cp in range(0xac00,0xd7a4):
-              try:
-                  chr(cp).encode('euc_kr')
-                  charset.add(cp)
-              except UnicodeEncodeError:
-                  continue
-          # Preserve less common characters used in the Yunmun web introduction.
-          charset.update(ord(c) for c in '潤文夜間協會韓國眞冊齒血無眠靑赤香夜')
+          # Keep the exact glyphs used in the published V2 introduction.
+          charset.update(ord(c) for c in (root / 'charset.txt').read_text(encoding='utf-8'))
           for source, destination in sources:
               input_name = Path('/tmp') / Path(source).name
               urlretrieve(base + source, input_name)
               font = TTFont(input_name)
+              is_serif = destination.startswith('ym-serif')
+              is_bold = 'bold' in destination
+              family = 'Lumo Serif' if is_serif else 'Lumo Sans'
+              style = 'Bold' if is_bold else 'Regular'
+              name_map = {1: family, 2: style, 4: family + ' ' + style,
+                          6: family.replace(' ', '') + '-' + style,
+                          16: family, 17: style}
+              for name in font['name'].names:
+                  if name.nameID in name_map:
+                      name.string = name_map[name.nameID].encode(name.getEncoding())
               options = subset.Options()
               options.layout_features = ['*']
               options.name_IDs = ['*']
@@ -77,7 +81,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add fonts/
+          rm -f fonts/pretendard-variable.woff2 fonts/gowun-batang-regular.woff2 fonts/gowun-batang-bold.woff2
+          git add -A fonts/
           if ! git diff --cached --quiet; then
             git commit -m "Add locally hosted Pretendard and Gowun Batang WOFF2 fonts"
             git push
